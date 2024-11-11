@@ -110,31 +110,37 @@ const getTokenMetadataByAI = async (content: string) => {
 }
 
 const replyMessage = async (text: string) => {
-    try {
-        const url = "https://client-proxy-server.pump.fun/comment";
-        const payload = {
-            "text": text,
-            "mint": TOKEN_DEPLOYER_ADDRESS,
-            "token": ""
+    let attempts = 0;
+    while (attempts < 10) {
+        try {
+            const url = "https://client-proxy-server.pump.fun/comment";
+            const payload = {
+                "text": text,
+                "mint": TOKEN_DEPLOYER_ADDRESS,
+                "token": ""
+            }
+
+            const headers = {
+                'sec-ch-ua-platform': '"Windows"',
+                'x-aws-proxy-token': X_AWS_PROXY_TOKEN,
+                'Referer': 'https://pump.fun/',
+                'x-aws-waf-token': X_AWS_WAF_TOKEN,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+                'sec-ch-ua': '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+                'Content-Type': 'application/json',
+                'sec-ch-ua-mobile': '?0'
+            };
+
+            const response = await axios.post(url, payload, { headers });
+            return response.status;
+        } catch (err) {
+            console.error(`Attempt ${attempts + 1} failed: ${err}`);
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retrying
         }
-
-        const headers = {
-            'sec-ch-ua-platform': '"Windows"',
-            'x-aws-proxy-token': X_AWS_PROXY_TOKEN,
-            'Referer': 'https://pump.fun/',
-            'x-aws-waf-token': X_AWS_WAF_TOKEN,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-            'sec-ch-ua': '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
-            'Content-Type': 'application/json',
-            'sec-ch-ua-mobile': '?0'
-        };
-
-        const response = await axios.post(url, payload, { headers });
-        return response.status;
-    } catch (err) {
-        console.error(`An error occurred: ${err}`);
-        return false;
     }
+    console.error('Maximum retry attempts reached');
+    return false;
 };
 
 async function createTokenMetadata(create: any) {
@@ -217,6 +223,14 @@ const main = async () => {
     console.log('Initializing script...')    
 
     let processedComments = new Set();
+    try {
+        const data = fs.readFileSync('processedComments.json', 'utf-8');
+        const commentsArray: string[] = JSON.parse(data);
+        commentsArray.forEach((comment: string) => processedComments.add(comment));
+    } catch (err) {
+        console.log('No previous processed comments found, starting fresh.');
+    }
+
     while (true) {
         let comments = await fetchComment(TOKEN_DEPLOYER_ADDRESS || "")
         for (let i = 0; i < comments.replies.length; i++) {
@@ -246,7 +260,10 @@ const main = async () => {
                 }
             }
         }
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        fs.writeFileSync('processedComments.json', JSON.stringify(Array.from(processedComments)), 'utf-8');
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
     }
 }
 
